@@ -3,7 +3,7 @@ use axum::http::Method;
 use axum::{
     extract::{Path, State as AxumState, WebSocketUpgrade},
     response::{Html, Json, Response},
-    routing::get,
+    routing::{delete, get},
     Router,
 };
 use chrono;
@@ -247,6 +247,16 @@ async fn get_claude_session_output(Path(sessionId): Path<String>) -> Json<ApiRes
     Json(ApiResponse::success(
         "Output available via WebSocket only".to_string(),
     ))
+}
+
+/// Delete a session from disk
+async fn delete_session_handler(
+    Path((session_id, project_id)): Path<(String, String)>,
+) -> Json<ApiResponse<()>> {
+    match commands::claude::delete_session(session_id, project_id).await {
+        Ok(()) => Json(ApiResponse::success(())),
+        Err(e) => Json(ApiResponse::error(e)),
+    }
 }
 
 /// WebSocket handler for Claude execution with streaming output
@@ -819,6 +829,10 @@ pub async fn create_web_server(port: u16) -> Result<(), Box<dyn std::error::Erro
         .route(
             "/api/sessions/{sessionId}/output",
             get(get_claude_session_output),
+        )
+        .route(
+            "/api/sessions/{session_id}/{project_id}",
+            delete(delete_session_handler),
         )
         // WebSocket endpoint for real-time Claude execution
         .route("/ws/claude", get(claude_websocket))

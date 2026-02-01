@@ -20,7 +20,7 @@ use commands::agents::{
 use commands::claude::{
     cancel_claude_execution, check_auto_checkpoint, check_claude_version, cleanup_old_checkpoints,
     clear_checkpoint_manager, continue_claude_code, create_checkpoint, create_project,
-    execute_claude_code, find_claude_md_files, fork_from_checkpoint, get_checkpoint_diff,
+    delete_session, execute_claude_code, find_claude_md_files, fork_from_checkpoint, get_checkpoint_diff,
     get_checkpoint_settings, get_checkpoint_state_stats, get_claude_session_output,
     get_claude_settings, get_home_directory, get_hooks_config, get_project_sessions,
     get_recently_modified_files, get_session_timeline, get_system_prompt, list_checkpoints,
@@ -205,6 +205,7 @@ fn main() {
             cancel_claude_execution,
             list_running_claude_sessions,
             get_claude_session_output,
+            delete_session,
             list_directory_contents,
             search_files,
             get_recently_modified_files,

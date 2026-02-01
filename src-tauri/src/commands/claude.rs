@@ -916,6 +916,94 @@ pub async fn load_session_history(
     Ok(messages)
 }
 
+/// Deletes a session's JSONL file and associated todo data from disk
+#[tauri::command]
+pub async fn delete_session(session_id: String, project_id: String) -> Result<(), String> {
+    log::info!(
+        "Deleting session: {} from project: {}",
+        session_id,
+        project_id
+    );
+
+    let claude_dir = get_claude_dir().map_err(|e| e.to_string())?;
+
+    // Delete session JSONL file
+    let session_file = claude_dir
+        .join("projects")
+        .join(&project_id)
+        .join(format!("{}.jsonl", session_id));
+
+    if session_file.exists() {
+        fs::remove_file(&session_file)
+            .map_err(|e| format!("Failed to delete session file: {}", e))?;
+        log::info!("Deleted session file: {:?}", session_file);
+    } else {
+        log::warn!("Session file not found: {:?}", session_file);
+    }
+
+    // Delete session data directory (best-effort)
+    let session_dir = claude_dir
+        .join("projects")
+        .join(&project_id)
+        .join(&session_id);
+
+    if session_dir.exists() {
+        if let Err(e) = fs::remove_dir_all(&session_dir) {
+            log::warn!("Failed to delete session directory: {}", e);
+        } else {
+            log::info!("Deleted session directory: {:?}", session_dir);
+        }
+    }
+
+    // Delete associated todo files (best-effort, match session_id prefix)
+    let todos_dir = claude_dir.join("todos");
+    if todos_dir.exists() {
+        if let Ok(entries) = fs::read_dir(&todos_dir) {
+            for entry in entries.flatten() {
+                if let Some(name) = entry.file_name().to_str() {
+                    if name.starts_with(&session_id) && name.ends_with(".json") {
+                        if let Err(e) = fs::remove_file(entry.path()) {
+                            log::warn!("Failed to delete todo file {}: {}", name, e);
+                        } else {
+                            log::info!("Deleted todo file: {}", name);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Remove entry from sessions-index.json (best-effort)
+    let index_file = claude_dir
+        .join("projects")
+        .join(&project_id)
+        .join("sessions-index.json");
+
+    if index_file.exists() {
+        if let Ok(content) = fs::read_to_string(&index_file) {
+            if let Ok(mut index) = serde_json::from_str::<serde_json::Value>(&content) {
+                if let Some(entries) = index.get_mut("entries").and_then(|e| e.as_array_mut()) {
+                    let before = entries.len();
+                    entries.retain(|e| {
+                        e.get("sessionId").and_then(|s| s.as_str()) != Some(&session_id)
+                    });
+                    if entries.len() < before {
+                        if let Ok(updated) = serde_json::to_string_pretty(&index) {
+                            if let Err(e) = fs::write(&index_file, updated) {
+                                log::warn!("Failed to update sessions-index.json: {}", e);
+                            } else {
+                                log::info!("Removed session from sessions-index.json");
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(())
+}
+
 /// Execute a new interactive Claude Code session with streaming output
 #[tauri::command]
 pub async fn execute_claude_code(
